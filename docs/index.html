@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AudiobookSpecFix — Audiobook ACX Spec Check, Fix &amp; Re-Check | Local &amp; Private</title>
+<meta name="description" content="AudiobookSpecFix checks every audiobook chapter against the full ACX spec — RMS, true peak, noise floor, room tone, channels, 192 kbps CBR — fixes what a level pass can fix, then re-measures and reports fails first. 100% local: manuscript audio is never uploaded.">
+<style>
+  body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;margin:0;color:#1c2733;line-height:1.6;background:#fbfcfe}
+  .wrap{max-width:820px;margin:0 auto;padding:32px 20px 64px}
+  h1{font-size:2rem;line-height:1.25;margin:.2em 0}
+  h2{margin-top:2em;font-size:1.25rem}
+  .sub{font-size:1.1rem;color:#43536a}
+  .cta{display:inline-block;background:#0b6e4f;color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;margin:16px 0}
+  .card{background:#fff;border:1px solid #e3e9f0;border-radius:10px;padding:18px 20px;margin:14px 0}
+  .num{font-weight:700;color:#0b6e4f}
+  table{border-collapse:collapse;width:100%;font-size:.95rem}
+  th,td{border:1px solid #e3e9f0;padding:8px 10px;text-align:left}
+  th{background:#f2f6fa}
+  pre{background:#14202e;color:#d7e3f0;border-radius:10px;padding:16px 18px;overflow-x:auto;font-size:.83rem;line-height:1.5}
+  .fail{color:#e26d5a;font-weight:700}
+  footer{color:#7a8798;font-size:.85rem;margin-top:48px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p><strong>AudiobookSpecFix</strong></p>
+  <h1>Rejected by ACX once already?<br>Find out before you submit — not after.</h1>
+  <p class="sub">AudiobookSpecFix measures <em>every chapter</em> of your audiobook against the full ACX technical spec, fixes what a level/format pass can fix, then <em>re-measures every output</em> and gives you a fails-first report. It all runs on your own computer — an unpublished manuscript is exactly the kind of audio that should never be uploaded to someone else's server.</p>
+  <a class="cta" href="https://binbinster.gumroad.com/l/audiobookspecfix-audiobook-checker">Get AudiobookSpecFix — $29 one-time</a>
+
+  <h2>The full spec, checked on every chapter</h2>
+  <div class="card">
+    <table>
+      <tr><th>Check</th><th>ACX requirement</th><th>How AudiobookSpecFix measures it</th></tr>
+      <tr><td>Overall RMS</td><td>−23 to −18 dB</td><td>Full PCM decode of the chapter, energy-averaged</td></tr>
+      <tr><td>True peak</td><td>≤ −3 dB</td><td>Oversampled true-peak analysis</td></tr>
+      <tr><td>Noise floor</td><td>≤ −60 dB RMS</td><td>The quietest 500 ms window in the file</td></tr>
+      <tr><td>Format</td><td>MP3, 192 kbps CBR</td><td>Per-frame bitrate profile parsed from the MP3 frame headers — VBR can't hide behind a tag</td></tr>
+      <tr><td>Sample rate</td><td>44.1 kHz</td><td>Stream probe</td></tr>
+      <tr><td>File length</td><td>≤ 120 minutes</td><td>Stream probe</td></tr>
+      <tr><td>Head room tone</td><td>0.5 to 1 second</td><td>50 ms frame analysis at the file head</td></tr>
+      <tr><td>Tail room tone</td><td>1 to 5 seconds</td><td>50 ms frame analysis at the file tail</td></tr>
+      <tr><td>Channels</td><td>One layout per book</td><td>Every chapter compared against the book's layout</td></tr>
+      <tr><td>Long pauses</td><td>—</td><td>Pauses over 5 s are listed in the report (flagged, never cut — see below)</td></tr>
+    </table>
+    <p style="font-size:.9rem;color:#43536a">Spec as published in the ACX audio submission requirements, checked 2026-10-26. The spec table lives in one versioned place in the engine, so if ACX moves a number, the checker moves with it.</p>
+  </div>
+
+  <h2>The report leads with what's wrong</h2>
+  <div class="card">
+    <p>Every run writes <code>acx_report.md</code>. Fails first — measured value vs. required value, before → after — then what was fixed, then the full per-file detail. A real excerpt, from the seeded acceptance test below:</p>
+    <pre>## FAILS FIRST — still failing after the fix pass
+- ch6.mp3 — UNFIXABLE, no output file made:
+  - [FAIL] Noise floor (quietest 500 ms): -49.8 dB RMS (required &lt;= -60 dB RMS)
+  Why: noise floor -49.8 dB is too hot: reaching the RMS window
+  would push the floor above -60 dB … it needs re-recording,
+  not a level fix.
+
+## Fixed and re-verified
+- ch1.mp3 — fixed, all checks PASS after re-measurement
+  Overall RMS: -20.8 dB (was -30.3 dB) · True peak: -11.7 dBTP</pre>
+    <p>You download fixed chapters that come with a green re-measurement — not a claim, a measurement.</p>
+  </div>
+
+  <h2>What it fixes</h2>
+  <div class="card">
+    <ul>
+      <li><strong>Level</strong> — gain or limiting into the −23…−18 dB RMS window with peaks held under −3 dB</li>
+      <li><strong>Channels</strong> — the odd stereo chapter in a mono book (or vice versa) unified to the book's layout</li>
+      <li><strong>Room tone</strong> — missing head tone added, over-long tails trimmed, using <em>the chapter's own room tone</em> carved from its longest quiet stretch, not a synthetic substitute</li>
+      <li><strong>Format</strong> — 128k VBR, 48 kHz, WAV-from-the-studio, whatever you hand it: one final encode to 192 kbps CBR MP3 at 44.1 kHz</li>
+      <li><strong>One book, one run</strong> — a whole folder of chapters per pass, each re-checked; originals never modified</li>
+    </ul>
+  </div>
+
+  <h2>What it cannot fix — honestly</h2>
+  <div class="card">
+    <ul>
+      <li><strong>Pauses over 5 seconds are flagged, never auto-cut.</strong> A long pause might be a mistake — or the most dramatic beat in the chapter. AudiobookSpecFix lists them with timestamps; the decision stays yours.</li>
+      <li><strong>A noise floor recorded too hot can't be level-fixed.</strong> If the hiss sits at −50 dB, pushing levels around just moves the problem between the RMS window and the floor limit. The report marks the chapter UNFIXABLE and tells you to re-record — no fake "fixed" file, no silent noise-reduction artefacts in your narration.</li>
+      <li><strong>Passing the machine spec is not passing ACX.</strong> These are the machine-checkable technical requirements. ACX also runs human QC — pronunciation, performance, mouth clicks, extraneous sounds. AudiobookSpecFix can't hear those, and it won't pretend to.</li>
+    </ul>
+  </div>
+
+  <h2>Verified, not vibes</h2>
+  <div class="card">
+    <p>In a seeded acceptance test, 6 synthesised chapters carried planted defects: RMS at −30.3 dB, a −0.8 dBTP peak spike, a 48 kHz VBR encode with a 6.0 s interior pause, a chapter with 0.00 s of head tone and an 8.00 s tail, a stereo chapter in a mono book, and a −49.8 dB noise floor designed to be unfixable. <span class="num">102 of 102 checks passed</span>: chapters 1–5 were fixed and re-measured green on every check (RMS to −20.8 / −22.3 dB, peak to −3.9 dBTP, head tone 0.00 → 0.75 s, tail 8.00 → 2.50 s, the VBR chapter re-encoded with its 6 s pause flagged and <em>kept</em> at 25.2 → 25.2 s), chapter 6 was reported UNFIXABLE with no output file, zero new defects were introduced, and the originals' SHA-256 hashes were unchanged.</p>
+  </div>
+
+  <h2>How it works</h2>
+  <div class="card">
+    <ol>
+      <li>Open AudiobookSpecFix, choose the folder of chapter files and an output folder</li>
+      <li>Click <em>Check, Fix &amp; Re-Check</em> (or run check-only to just get the report)</li>
+      <li>Get fixed chapters plus <code>acx_report.md</code> — fails first, everything re-measured</li>
+    </ol>
+    <p>Windows 10/11. No account, no subscription, no per-hour metering — one $29 purchase covers every book you ever submit. However many finished hours your catalogue has, the price doesn't move.</p>
+  </div>
+
+  <a class="cta" href="https://binbinster.gumroad.com/l/audiobookspecfix-audiobook-checker">Get AudiobookSpecFix — $29 one-time</a>
+
+  <footer>
+    <p>AudiobookSpecFix is an independent tool built <strong>for ACX submission</strong>. ACX, Audible and Amazon are trademarks of Amazon.com, Inc. or its affiliates. AudiobookSpecFix is not affiliated with, endorsed by, or sponsored by Amazon, Audible, or ACX, and passing its checks does not guarantee acceptance by ACX.</p>
+    <p>More local, one-job tools: <a href="https://binbin7418-dotcom.github.io/">the full collection</a>.</p>
+  </footer>
+</div>
+</body>
+</html>
