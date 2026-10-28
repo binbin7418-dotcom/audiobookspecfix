@@ -39,8 +39,9 @@ jobs:
           # 3) libmp3lame encode (engine final-encode encoder, 192k per SPEC)
           Invoke-Checked $ff @('-hide_banner','-y','-i',"$w/a.wav",'-codec:a','libmp3lame','-b:a','192k',"$w/a.mp3")
           # 4) ffprobe JSON probe with the exact -show_entries set the engine requests (probe())
-          $probe = & $fp -v quiet -show_entries stream=codec_name,sample_rate,channels,bit_rate:format=duration,bit_rate -of json "$w/a.mp3"
-          if ($LASTEXITCODE -ne 0 -or $probe -notmatch 'mp3') { throw 'smoke step failed: ffprobe probe' }
+          $probe = (& $fp -v quiet -show_entries stream=codec_name,sample_rate,channels,bit_rate:format=duration,bit_rate -of json "$w/a.mp3") -join "`n"
+          Write-Host $probe
+          if ($LASTEXITCODE -ne 0 -or $probe -notmatch '"codec_name": "mp3"') { throw 'smoke step failed: ffprobe probe' }
           # 5) full decode to f32le PCM (engine pcm_analysis decode path)
           Invoke-Checked $ff @('-v','error','-i',"$w/a.mp3",'-ar','44100','-f','f32le','-acodec','pcm_f32le',"$w/a.f32")
           # 6) loudnorm analysis, JSON must contain input_tp (engine true_peak_db)
