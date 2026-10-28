@@ -12,13 +12,51 @@ jobs:
         run: pip install pyinstaller -r requirements.txt
       - name: Build
         run: pyinstaller audiobookspecfix.spec
-      - name: Fetch ffmpeg (BtbN static build)
+      - name: Fetch ffmpeg (gyan.dev essentials build, pinned 9.0.2)
         run: |
-          Invoke-WebRequest -Uri "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-lgpl.zip" -OutFile ffmpeg.zip
+          Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/packages/ffmpeg-9.0.2-essentials_build.zip" -OutFile ffmpeg.zip
           Expand-Archive ffmpeg.zip -DestinationPath ffmpeg_x
           $bin = Get-ChildItem -Recurse -Directory ffmpeg_x | Where-Object { $_.Name -eq 'bin' } | Select-Object -First 1
           Copy-Item (Join-Path $bin.FullName 'ffmpeg.exe') dist/AudiobookSpecFix/
           Copy-Item (Join-Path $bin.FullName 'ffprobe.exe') dist/AudiobookSpecFix/
+          $lic = Get-ChildItem -Recurse -File ffmpeg_x | Where-Object { $_.Name -eq 'LICENSE' } | Select-Object -First 1
+          Copy-Item $lic.FullName dist/AudiobookSpecFix/ffmpeg-LICENSE.txt
+      - name: Smoke test bundled ffmpeg/ffprobe
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ff = 'dist/AudiobookSpecFix/ffmpeg.exe'
+          $fp = 'dist/AudiobookSpecFix/ffprobe.exe'
+          $w = 'smoke'
+          New-Item -ItemType Directory -Force $w | Out-Null
+          function Invoke-Checked([string]$exe, [string[]]$cmdArgs) {
+            & $exe @cmdArgs
+            if ($LASTEXITCODE -ne 0) { throw "smoke step failed: $exe $cmdArgs" }
+          }
+          # 1) lavfi sine -> WAV (lavfi input + WAV encode; engine decodes/resamples everything it touches)
+          Invoke-Checked $ff @('-hide_banner','-y','-f','lavfi','-i','sine=frequency=1000:duration=2','-ar','44100',"$w/a.wav")
+          # 2) anoisesrc brown noise (engine _synth_tone room-tone fallback)
+          Invoke-Checked $ff @('-hide_banner','-y','-f','lavfi','-i','anoisesrc=color=brown:amplitude=0.01','-t','1','-ar','44100',"$w/tone.wav")
+          # 3) libmp3lame encode (engine final-encode encoder, 192k per SPEC)
+          Invoke-Checked $ff @('-hide_banner','-y','-i',"$w/a.wav",'-codec:a','libmp3lame','-b:a','192k',"$w/a.mp3")
+          # 4) ffprobe JSON probe with the exact -show_entries set the engine requests (probe())
+          $probe = & $fp -v quiet -show_entries stream=codec_name,sample_rate,channels,bit_rate:format=duration,bit_rate -of json "$w/a.mp3"
+          if ($LASTEXITCODE -ne 0 -or $probe -notmatch 'mp3') { throw 'smoke step failed: ffprobe probe' }
+          # 5) full decode to f32le PCM (engine pcm_analysis decode path)
+          Invoke-Checked $ff @('-v','error','-i',"$w/a.mp3",'-ar','44100','-f','f32le','-acodec','pcm_f32le',"$w/a.f32")
+          # 6) loudnorm analysis, JSON must contain input_tp (engine true_peak_db)
+          $ln = & $ff -hide_banner -i "$w/a.mp3" -af loudnorm=print_format=json -f null - 2>&1 | Out-String
+          if ($ln -notmatch 'input_tp') { throw 'smoke step failed: loudnorm' }
+          # 7) astats + silencedetect capability checks
+          Invoke-Checked $ff @('-hide_banner','-i',"$w/a.wav",'-af','astats=metadata=1','-f','null','-')
+          Invoke-Checked $ff @('-hide_banner','-i',"$w/a.wav",'-af','silencedetect=noise=-50dB:d=0.5','-f','null','-')
+          # 8) volume + alimiter processing chain (engine fix_file processing pass)
+          Invoke-Checked $ff @('-hide_banner','-y','-i',"$w/a.wav",'-af','volume=3.00dB,alimiter=limit=0.8913:attack=5:release=50:level=false','-ar','44100',"$w/proc.wav")
+          # 9) concat demuxer -> libmp3lame (engine fix_file final encode path)
+          $p1 = (Resolve-Path "$w/proc.wav").Path -replace '\\','/'
+          $p2 = (Resolve-Path "$w/tone.wav").Path -replace '\\','/'
+          Set-Content "$w/list.txt" @("file '$p1'", "file '$p2'")
+          Invoke-Checked $ff @('-hide_banner','-y','-f','concat','-safe','0','-i',"$w/list.txt",'-codec:a','libmp3lame','-b:a','192k','-ar','44100',"$w/final.mp3")
+          Write-Host 'SMOKE OK'
       - name: Package
         run: Compress-Archive -Path dist/AudiobookSpecFix -DestinationPath AudiobookSpecFix-Windows.zip
       - uses: actions/upload-artifact@v4
